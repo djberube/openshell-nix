@@ -1,0 +1,126 @@
+name: Update OpenShell
+
+on:
+  schedule:
+    # Run hourly at minute 0
+    - cron: '0 * * * *'
+  workflow_dispatch: # Allow manual triggering
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v26
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Check for new OpenShell release
+        id: check
+        run: |
+          # Get current version from package.nix
+          CURRENT_VERSION=$(grep -oP 'version = "\K[^"]+' packages/openshell/package.nix)
+          echo "Current version: $CURRENT_VERSION"
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+          # Get latest release from GitHub
+          LATEST_VERSION=$(curl -sL https://api.github.com/repos/NVIDIA/OpenShell/releases/latest | jq -r '.tag_name' | sed 's/^v//')
+          echo "Latest version: $LATEST_VERSION"
+          echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+
+          # Compare versions
+          if [ "$CURRENT_VERSION" != "$LATEST_VERSION" ]; then
+            echo "New version available!"
+            echo "needs_update=true" >> $GITHUB_OUTPUT
+          else
+            echo "Already up to date"
+            echo "needs_update=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Update version and fetch new source
+        if: steps.check.outputs.needs_update == 'true'
+        id: update
+        run: |
+          NEW_VERSION="${{ steps.check.outputs.latest_version }}"
+
+          # Update version in package.nix
+          sed -i "s/version = \"[^\"]*\"/version = \"$NEW_VERSION\"/" packages/openshell/package.nix
+
+          # Fetch Cargo.lock from new version
+          curl -sL "https://raw.githubusercontent.com/NVIDIA/OpenShell/v${NEW_VERSION}/Cargo.lock" \
+            -o packages/openshell/Cargo.lock
+
+          # Fetch and update hash using nix-prefetch-url
+          echo "Fetching source hash for v${NEW_VERSION}..."
+          NIX_HASH=$(nix-prefetch-url --unpack "https://github.com/NVIDIA/OpenShell/archive/refs/tags/v${NEW_VERSION}.tar.gz" 2>&1 | head -1)
+
+          # Convert to SRI format
+          NEW_HASH=$(nix hash convert --hash-algo sha256 --to sri "$NIX_HASH")
+
+          echo "New hash: $NEW_HASH"
+
+          # Update the hash in package.nix
+          sed -i "s|hash = \"sha256-[^\"]*\";|hash = \"$NEW_HASH\";|" packages/openshell/package.nix
+
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Verify build works
+        if: steps.check.outputs.needs_update == 'true'
+        run: |
+          nix build .#openshell --print-build-logs
+
+      - name: Commit and push changes
+        if: steps.check.outputs.needs_update == 'true'
+        run: |
+          NEW_VERSION="${{ steps.update.new_version }}"
+
+          git add packages/openshell/package.nix packages/openshell/Cargo.lock
+          git commit -m "Update OpenShell to version $NEW_VERSION"
+          git tag "v$NEW_VERSION"
+          git push origin main
+          git push origin "v$NEW_VERSION"
+
+      - name: Create release
+        if: steps.check.outputs.needs_update == 'true'
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.update.new_version }}
+          release_name: OpenShell v${{ steps.update.new_version }}
+          body: |
+            Automated update to OpenShell v${{ steps.update.new_version }}
+
+            ## Upstream Release
+            See the [OpenShell release notes](https://github.com/NVIDIA/OpenShell/releases/tag/v${{ steps.update.new_version }}) for details.
+
+            ## Installation
+
+            ```bash
+            nix run github:${{ github.repository }}
+            ```
+
+            Or update your flake input to use this version.
+          draft: false
+          prerelease: false
+
+      - name: Report status
+        if: always()
+        run: |
+          if [ "${{ steps.check.outputs.needs_update }}" == "true" ]; then
+            echo "✅ Updated to version ${{ steps.update.new_version }}"
+          else
+            echo "ℹ️ No update needed - already at latest version"
+          fi
