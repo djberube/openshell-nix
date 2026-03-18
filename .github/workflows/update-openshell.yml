@@ -64,10 +64,10 @@ jobs:
 
           # Fetch and update hash using nix-prefetch-url
           echo "Fetching source hash for v${NEW_VERSION}..."
-          NIX_HASH=$(nix-prefetch-url --unpack "https://github.com/NVIDIA/OpenShell/archive/refs/tags/v${NEW_VERSION}.tar.gz" 2>&1 | head -1)
+          NIX_HASH=$(nix-prefetch-url --unpack "https://github.com/NVIDIA/OpenShell/archive/refs/tags/v${NEW_VERSION}.tar.gz" 2>&1 | tail -1)
 
           # Convert to SRI format
-          NEW_HASH=$(nix hash convert --hash-algo sha256 --to sri "$NIX_HASH")
+          NEW_HASH=$(nix hash convert --hash-algo sha256 --to-sri "$NIX_HASH")
 
           echo "New hash: $NEW_HASH"
 
