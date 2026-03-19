@@ -20,6 +20,10 @@
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = import inputs.systems;
 
+      flake.overlays.default = final: prev: {
+        openshell = prev.callPackage ./packages/openshell/package.nix { };
+      };
+
       perSystem =
         {
           config,
@@ -31,10 +35,6 @@
           packages = {
             openshell = pkgs.callPackage ./packages/openshell/package.nix { };
             default = config.packages.openshell;
-          };
-
-          overlays.default = final: prev: {
-            openshell = config.packages.openshell;
           };
 
           apps = {
