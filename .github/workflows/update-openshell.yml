@@ -77,8 +77,6 @@ jobs:
           # Update the hash in package.nix
           sed -i "s|hash = \"sha256-[^\"]*\";|hash = \"$NEW_HASH\";|" packages/openshell/package.nix
 
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-
       - name: Verify build works
         if: steps.check.outputs.needs_update == 'true'
         run: |
@@ -87,7 +85,7 @@ jobs:
       - name: Commit and push changes
         if: steps.check.outputs.needs_update == 'true'
         run: |
-          NEW_VERSION="${{ steps.update.new_version }}"
+          NEW_VERSION="${{ steps.check.outputs.latest_version }}"
 
           git add packages/openshell/package.nix packages/openshell/Cargo.lock
           git commit -m "Update OpenShell to version $NEW_VERSION"
@@ -101,13 +99,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: v${{ steps.update.new_version }}
-          release_name: OpenShell v${{ steps.update.new_version }}
+          tag_name: v${{ steps.check.outputs.latest_version }}
+          release_name: OpenShell v${{ steps.check.outputs.latest_version }}
           body: |
-            Automated update to OpenShell v${{ steps.update.new_version }}
+            Automated update to OpenShell v${{ steps.check.outputs.latest_version }}
 
             ## Upstream Release
-            See the [OpenShell release notes](https://github.com/NVIDIA/OpenShell/releases/tag/v${{ steps.update.new_version }}) for details.
+            See the [OpenShell release notes](https://github.com/NVIDIA/OpenShell/releases/tag/v${{ steps.check.outputs.latest_version }}) for details.
 
             ## Installation
 
@@ -123,7 +121,7 @@ jobs:
         if: always()
         run: |
           if [ "${{ steps.check.outputs.needs_update }}" == "true" ]; then
-            echo "✅ Updated to version ${{ steps.update.new_version }}"
+            echo "✅ Updated to version ${{ steps.check.outputs.latest_version }}"
           else
             echo "ℹ️ No update needed - already at latest version"
           fi
