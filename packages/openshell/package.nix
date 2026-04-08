@@ -9,13 +9,13 @@
 
 python312Packages.buildPythonApplication rec {
   pname = "openshell";
-  version = "0.0.24";
+  version = "0.0.25";
 
   src = fetchFromGitHub {
     owner = "NVIDIA";
     repo = "OpenShell";
     rev = "v${version}";
-    hash = "sha256-iB3AIUKgSu9xkGmf8qPTZbRzVgQ7CsR13lzll7di9h4=";
+    hash = "sha256-Ecw8drzDs5gMJS3q3mjWhsuJO2XCbNX3N23yRRg8AVM=";
   };
 
   format = "pyproject";
